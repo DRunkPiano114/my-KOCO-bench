@@ -66,16 +66,25 @@ Each question assesses:
 
 ## 🔧 Setup
 
-### 1. Build Docker Image
+### 1. Build Docker Eval Images
 
-Code evaluation (Task 1, Step 4) runs inside a Docker container. Build it first:
+Code evaluation (Task 1, Step 4) runs inside Docker containers. Each framework maps to a slim, purpose-built image:
+
+| Framework | Docker Image | Dockerfile |
+|-----------|-------------|------------|
+| `verl`, `open-r1` | `koco-eval-verl` | `Dockerfile.eval.verl` |
+| `raganything`, `smolagents` | `koco-eval-rag` | `Dockerfile.eval.rag` |
+| `tensorrt_model_optimizer` | `koco-eval-trt` | `Dockerfile.eval.trt` |
 
 ```bash
 cd KOCO-bench/Build-Env/Docker
-docker build -f Dockerfile.lightweight -t koco-bench:lightweight .
+make all                    # build all eval images
+# or build only what you need:
+make FRAMEWORK=verl         # builds koco-eval-verl
+make eval-rag               # builds koco-eval-rag
 ```
 
-> The evaluation pipeline expects the tag `koco-bench:lightweight`. Without it, the execution evaluation step will fail.
+> The evaluation script automatically selects the correct image based on `--framework`. Build at least the image for the framework you plan to evaluate.
 
 ### 2. Configure Environment
 

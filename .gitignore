@@ -6,3 +6,5 @@ logs
 
 # cursor files
 .cursor/
+
+tmp/

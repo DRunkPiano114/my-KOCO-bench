@@ -35,8 +35,13 @@ echo "输出文件: ${OUTPUT_FILE}"
 echo "========================================================"
 echo ""
 
-# Docker image name (must be built from Build-Env/Docker/Dockerfile.lightweight)
-DOCKER_IMAGE="koco-bench:lightweight"
+# Select Docker image based on framework
+case "${FRAMEWORK}" in
+    verl|open-r1)                DOCKER_IMAGE="koco-eval-verl" ;;
+    raganything|smolagents)       DOCKER_IMAGE="koco-eval-rag"  ;;
+    tensorrt_model_optimizer)     DOCKER_IMAGE="koco-eval-trt"  ;;
+    *) echo "❌ Error: Unknown framework '${FRAMEWORK}' — cannot select Docker image"; exit 1 ;;
+esac
 
 # Check if Docker daemon is running
 if ! docker info &>/dev/null; then
@@ -53,8 +58,8 @@ if [ -z "$(docker images -q "$DOCKER_IMAGE" 2>/dev/null)" ]; then
     echo "❌ Error: Docker image '${DOCKER_IMAGE}' does not exist"
     echo ""
     echo "Please build the image first:"
-    echo "  cd $(cd "$SCRIPTS_DIR/../../.." && pwd)"
-    echo "  docker build -f Build-Env/Docker/Dockerfile.lightweight -t ${DOCKER_IMAGE} Build-Env/Docker/"
+    echo "  cd $(cd "$SCRIPTS_DIR/../../.." && pwd)/Build-Env/Docker"
+    echo "  make FRAMEWORK=${FRAMEWORK}"
     exit 1
 fi
 

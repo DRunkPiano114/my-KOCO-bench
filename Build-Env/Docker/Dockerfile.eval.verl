@@ -1,0 +1,32 @@
+FROM python:3.10-slim
+
+WORKDIR /workspace
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    git \
+    curl \
+    build-essential \
+    && rm -rf /var/lib/apt/lists/*
+
+ENV PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    PIP_NO_CACHE_DIR=1
+
+RUN pip install -U pip setuptools wheel && \
+    pip install \
+        torch torchvision torchaudio \
+        --index-url https://download.pytorch.org/whl/cpu && \
+    pip install \
+        verl \
+        trl==0.20.0 \
+        transformers \
+        accelerate \
+        peft \
+        datasets \
+        "ray[default]" \
+        math_verify \
+        Levenshtein \
+        json_repair \
+        pytest \
+        "numpy<2.0.0"
+
+CMD ["/bin/bash"]
