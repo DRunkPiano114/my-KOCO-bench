@@ -7,6 +7,7 @@ ENV LC_ALL=C.UTF-8
 ENV CUDA_HOME=/usr/local/cuda
 ENV PATH=${CUDA_HOME}/bin:${PATH}
 ENV LD_LIBRARY_PATH=${CUDA_HOME}/lib64:${LD_LIBRARY_PATH}
+ENV UV_SYSTEM_PYTHON=1
 
 # Minimal system dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -22,17 +23,17 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.10 1 \
     && rm -rf /var/lib/apt/lists/*
 
-# Upgrade pip
-RUN python -m pip install --upgrade pip setuptools wheel
+# Install uv
+RUN python -m pip install --upgrade pip uv
 
 # Install PyTorch with CUDA 12.1 support
-RUN pip install --no-cache-dir \
+RUN uv pip install \
     torch==2.5.1 torchvision==0.20.1 torchaudio==2.5.1 \
     --index-url https://download.pytorch.org/whl/cu121
 
 # Install curated evaluation dependencies
 COPY requirements-eval-trt.txt /tmp/requirements-eval-trt.txt
-RUN pip install --no-cache-dir -r /tmp/requirements-eval-trt.txt && \
+RUN uv pip install -r /tmp/requirements-eval-trt.txt && \
     rm /tmp/requirements-eval-trt.txt
 
 WORKDIR /workspace

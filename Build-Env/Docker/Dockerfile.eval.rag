@@ -9,15 +9,19 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 ENV PIP_DISABLE_PIP_VERSION_CHECK=1 \
-    PIP_NO_CACHE_DIR=1
+    PIP_NO_CACHE_DIR=1 \
+    UV_SYSTEM_PYTHON=1
 
-RUN pip install -U pip setuptools wheel && \
-    pip install \
+RUN pip install -U pip uv
+
+# Step 1: PyTorch CPU
+RUN uv pip install \
         torch torchvision torchaudio \
-        --index-url https://download.pytorch.org/whl/cpu && \
-    pip install \
+        --index-url https://download.pytorch.org/whl/cpu
+
+# Step 2: Core RAG dependencies (langchain 0.1+ ecosystem)
+RUN uv pip install \
         raganything[all] \
-        smolagents[litellm,mcp] \
         pytest \
         pytest-asyncio \
         numpy \
@@ -28,10 +32,14 @@ RUN pip install -U pip setuptools wheel && \
         langchain-community \
         langchain-text-splitters \
         langchain-chroma \
-        langchain-huggingface \
-        "langchain<0.1" \
         mcp \
-        python-frontmatter \
-        dataset
+        python-frontmatter
+
+# Step 3: Packages with conflicting langchain constraints – keep separate to avoid resolution-too-deep
+RUN uv pip install \
+        smolagents[litellm,mcp] \
+        datasets \
+        "langchain<0.1" \
+        langchain-huggingface
 
 CMD ["/bin/bash"]

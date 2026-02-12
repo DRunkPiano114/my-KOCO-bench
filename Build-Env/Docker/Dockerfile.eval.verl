@@ -9,13 +9,18 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 ENV PIP_DISABLE_PIP_VERSION_CHECK=1 \
-    PIP_NO_CACHE_DIR=1
+    PIP_NO_CACHE_DIR=1 \
+    UV_SYSTEM_PYTHON=1
 
-RUN pip install -U pip setuptools wheel && \
-    pip install \
+RUN pip install -U pip uv
+
+# Step 1: PyTorch CPU
+RUN uv pip install \
         torch torchvision torchaudio \
-        --index-url https://download.pytorch.org/whl/cpu && \
-    pip install \
+        --index-url https://download.pytorch.org/whl/cpu
+
+# Step 2: VERL ecosystem
+RUN uv pip install \
         verl \
         trl==0.20.0 \
         transformers \
