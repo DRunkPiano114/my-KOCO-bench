@@ -1,0 +1,5 @@
+# Dependencies for KOCO-bench Python CLI (cli.py)
+# Install: pip install -r requirements-cli.txt
+python-dotenv>=1.0.0
+openai>=1.0.0
+numpy
