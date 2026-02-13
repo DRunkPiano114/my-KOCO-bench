@@ -3,9 +3,19 @@
 KOCO-bench CLI — Cross-platform entry point.
 
 Usage (works on Windows / Linux / macOS):
+    # steps 1-3: parse algorithm methods, construct prompts, generate code via API
     python cli.py generate  --framework verl --model deepseek/deepseek-v3.2
+
+    # steps 4-5: run execution evaluation + aggregate metrics
+    python cli.py score     --framework verl --model deepseek/deepseek-v3.2
+
+    # step 4 only: run execution evaluation inside Docker
     python cli.py evaluate  --framework verl --model deepseek/deepseek-v3.2
+
+    # step 5 only: aggregate evaluation metrics
     python cli.py aggregate --framework verl --model deepseek/deepseek-v3.2
+
+    # full pipeline (steps 1-5): generate + score
     python cli.py run       --framework verl --model deepseek/deepseek-v3.2
 """
 
@@ -114,6 +124,9 @@ def step3_generate(
     model: str,
     examples: list,
     num_completions: int = 1,
+    timeout: float = 300,
+    connect_timeout: float = 30,
+    max_retries: int = 5,
 ) -> dict:
     """Call OpenRouter API to generate code completions.
 
@@ -161,6 +174,9 @@ def step3_generate(
             "--temperature", "0.0",
             "--top_p", "1.0",
             "--delay", "0.5",
+            "--timeout", str(timeout),
+            "--connect_timeout", str(connect_timeout),
+            "--max_retries", str(max_retries),
             "--debug",
         ]
         try:
@@ -336,6 +352,9 @@ def main():
     gen.add_argument("--model", required=True, help="Model name (e.g. deepseek/deepseek-v3.2)")
     gen.add_argument("--test-example", default=None, help="Single test example (default: all)")
     gen.add_argument("--num-completions", type=int, default=1, help="Completions per sample")
+    gen.add_argument("--timeout", type=float, default=300, help="API read timeout in seconds (default: 300)")
+    gen.add_argument("--connect-timeout", type=float, default=30, help="API connect timeout in seconds (default: 30)")
+    gen.add_argument("--max-retries", type=int, default=5, help="Max API retries (default: 5)")
 
     # evaluate
     ev = subparsers.add_parser(
@@ -354,6 +373,15 @@ def main():
     ag.add_argument("--framework", required=True)
     ag.add_argument("--model", required=True)
 
+    # score (steps 4-5)
+    sc = subparsers.add_parser(
+        "score",
+        help="Steps 4-5: run Docker execution evaluation + aggregate metrics",
+    )
+    sc.add_argument("--framework", required=True, help="Framework name (e.g. verl)")
+    sc.add_argument("--model", required=True, help="Model name (e.g. deepseek/deepseek-v3.2)")
+    sc.add_argument("--test-example", default=None, help="Single test example (default: all)")
+
     # run (full pipeline)
     rn = subparsers.add_parser(
         "run",
@@ -363,6 +391,9 @@ def main():
     rn.add_argument("--model", required=True)
     rn.add_argument("--test-example", default=None)
     rn.add_argument("--num-completions", type=int, default=1)
+    rn.add_argument("--timeout", type=float, default=300)
+    rn.add_argument("--connect-timeout", type=float, default=30)
+    rn.add_argument("--max-retries", type=int, default=5)
 
     # parse
     args = parser.parse_args()
@@ -404,7 +435,10 @@ def main():
 
         # Step 3
         print("\n>>> Step 3/3: Generate code via OpenRouter API")
-        r3 = step3_generate(args.framework, args.model, examples, args.num_completions)
+        r3 = step3_generate(
+            args.framework, args.model, examples, args.num_completions,
+            args.timeout, args.connect_timeout, args.max_retries,
+        )
         _print_step_result("Step 3", r3)
 
         # Summary
@@ -439,6 +473,35 @@ def main():
         )
         return cmd_aggregate(args.framework, args.model)
 
+    # score (steps 4-5)
+    elif args.command == "score":
+        _print_banner(
+            "KOCO-bench: Evaluation & Aggregation (Steps 4-5)",
+            Framework=args.framework,
+            Model=args.model,
+            TestExample=test_example or "all",
+        )
+
+        # Step 4
+        print("\n>>> Step 1/2: Docker execution evaluation")
+        rc4 = cmd_evaluate(args.framework, args.model, test_example)
+
+        # Step 5 — run even if step 4 had partial failures
+        print("\n>>> Step 2/2: Aggregate metrics")
+        rc5 = cmd_aggregate(args.framework, args.model)
+
+        # Summary
+        model_dir_name = args.model.split("/")[-1]
+        print("\n" + "=" * 60)
+        print("  Steps 4-5 completed!")
+        print("=" * 60)
+        print(f"  4. Docker evaluation  {'PASS' if rc4 == 0 else 'FAIL'}")
+        print(f"  5. Aggregate metrics  {'PASS' if rc5 == 0 else 'FAIL'}")
+        print(f"\n  Results: scripts/data/{args.framework}/{model_dir_name}/")
+        print("=" * 60)
+
+        return 1 if (rc4 or rc5) else 0
+
     # run (full pipeline)
     elif args.command == "run":
         _print_banner(
@@ -465,7 +528,10 @@ def main():
             return 1
 
         print("\n>>> Step 3/5: Generate code via OpenRouter API")
-        r3 = step3_generate(args.framework, args.model, examples, args.num_completions)
+        r3 = step3_generate(
+            args.framework, args.model, examples, args.num_completions,
+            args.timeout, args.connect_timeout, args.max_retries,
+        )
         _print_step_result("Step 3", r3)
         if r3["fail"] and not r3["success"]:
             return 1
