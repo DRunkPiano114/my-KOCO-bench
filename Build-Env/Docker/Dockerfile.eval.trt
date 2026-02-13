@@ -32,6 +32,7 @@ RUN uv pip install \
     --index-url https://download.pytorch.org/whl/cu121
 
 # Install curated evaluation dependencies
+# NOTE: requirements-eval-trt.txt pins only direct dependencies;
 COPY requirements-eval-trt.txt /tmp/requirements-eval-trt.txt
 RUN uv pip install -r /tmp/requirements-eval-trt.txt && \
     rm /tmp/requirements-eval-trt.txt
