@@ -17,6 +17,10 @@ Usage (works on Windows / Linux / macOS):
 
     # full pipeline (steps 1-5): generate + score
     python cli.py run       --framework verl --model deepseek/deepseek-v3.2
+
+    # validate Docker image: run ground truth tests inside Docker
+    python cli.py validate-image --framework verl
+    python cli.py validate-image --framework verl --test-example ARES
 """
 
 import argparse
@@ -283,6 +287,114 @@ def cmd_evaluate(framework: str, model: str, test_example: str = None) -> int:
     return 1 if failed else 0
 
 
+# Validate Docker image — run ground truth tests inside Docker
+def cmd_validate_image(framework: str, test_example: str = None) -> int:
+    """Run ground truth tests inside Docker to validate images.
+
+    For each test example, runs run_tests_with_stats.py inside the
+    framework's Docker container. If all tests pass at 100%, the image
+    is considered valid.
+
+    Usage:
+        python cli.py validate-image --framework verl
+        python cli.py validate-image --framework verl --test-example ARES
+    """
+    image = get_docker_image(framework)
+    container_mnt = "/workspace/project"
+    host_root = str(PROJECT_ROOT)
+
+    # Verify Docker is available
+    try:
+        subprocess.run(
+            ["docker", "info"],
+            capture_output=True, check=True,
+        )
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        print("ERROR: Docker is not running or not installed.")
+        print("  - Windows/macOS: Start Docker Desktop")
+        print("  - Linux: sudo systemctl start docker")
+        return 1
+
+    # Verify image exists
+    result = subprocess.run(
+        ["docker", "images", "-q", image],
+        capture_output=True, text=True,
+    )
+    if not result.stdout.strip():
+        print(f"ERROR: Docker image '{image}' not found.")
+        print(f"Build it first:  cd Build-Env/Docker && make FRAMEWORK={framework}")
+        return 1
+
+    examples = [test_example] if test_example else get_test_examples(framework)
+    total, passed, failed, skipped = 0, 0, 0, 0
+
+    for example in examples:
+        total += 1
+        test_code_dir = (
+            PROJECT_ROOT / framework / "test_examples" / example
+            / "code" / "test_code"
+        )
+        runner_file = test_code_dir / "run_tests_with_stats.py"
+
+        if not runner_file.exists():
+            print(f"\n--- {example} ---")
+            print(f"  SKIP: run_tests_with_stats.py not found")
+            skipped += 1
+            continue
+
+        # Paths inside container
+        container_test_code = (
+            f"{container_mnt}/{framework}/test_examples/{example}/code/test_code"
+        )
+        container_runner = f"{container_test_code}/run_tests_with_stats.py"
+
+        docker_cmd = [
+            "docker", "run", "--rm",
+            "-v", f"{host_root}:{container_mnt}",
+            "-w", container_test_code,
+            image,
+            "python3", container_runner,
+        ]
+
+        # Add --user only on Linux where it is needed and meaningful
+        if platform.system() == "Linux":
+            docker_cmd[3:3] = ["--user", f"{os.getuid()}:{os.getgid()}"]
+
+        print(f"\n--- {example} ---")
+        print(f"  Docker image : {image}")
+        print(f"  Test runner  : {framework}/test_examples/{example}/code/test_code/run_tests_with_stats.py")
+
+        proc = subprocess.run(docker_cmd)
+        if proc.returncode == 0:
+            print(f"  Result: PASS (100% ground truth tests passed)")
+            passed += 1
+        else:
+            print(f"  Result: FAIL (exit code {proc.returncode})")
+            failed += 1
+
+    # Summary
+    print()
+    print("=" * 60)
+    print("  Docker Image Validation Summary")
+    print("=" * 60)
+    print(f"  Framework    : {framework}")
+    print(f"  Docker image : {image}")
+    print(f"  Total        : {total}")
+    print(f"  Passed (100%): {passed}")
+    print(f"  Failed       : {failed}")
+    print(f"  Skipped      : {skipped}")
+
+    if failed == 0 and skipped == 0:
+        print(f"\n  ALL {passed} test examples passed — image is VALID")
+    elif failed == 0:
+        print(f"\n  {passed} passed, {skipped} skipped — image looks OK (some runners missing)")
+    else:
+        print(f"\n  {failed} FAILED — image may have issues")
+
+    print("=" * 60)
+    return 1 if failed else 0
+
+
 # Step 5 — Aggregate metrics
 def cmd_aggregate(framework: str, model: str) -> int:
     """Aggregate evaluation metrics.
@@ -382,6 +494,14 @@ def main():
     sc.add_argument("--model", required=True, help="Model name (e.g. deepseek/deepseek-v3.2)")
     sc.add_argument("--test-example", default=None, help="Single test example (default: all)")
 
+    # validate-image
+    vi = subparsers.add_parser(
+        "validate-image",
+        help="Validate Docker image by running ground truth tests to 100%% pass",
+    )
+    vi.add_argument("--framework", required=True, help="Framework name (e.g. verl)")
+    vi.add_argument("--test-example", default=None, help="Single test example (default: all)")
+
     # run (full pipeline)
     rn = subparsers.add_parser(
         "run",
@@ -453,6 +573,15 @@ def main():
         print("=" * 60)
 
         return 1 if (r1["fail"] or r2["fail"] or r3["fail"]) else 0
+
+    # validate-image
+    elif args.command == "validate-image":
+        _print_banner(
+            "KOCO-bench: Validate Docker Image (Ground Truth Tests)",
+            Framework=args.framework,
+            TestExample=test_example or "all",
+        )
+        return cmd_validate_image(args.framework, test_example)
 
     # evaluate
     elif args.command == "evaluate":
